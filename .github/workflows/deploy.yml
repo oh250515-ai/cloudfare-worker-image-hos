@@ -30,8 +30,12 @@ jobs:
         run: npm install --legacy-peer-deps --no-fund --audit=false
       - name: Check dependency vulnerabilities
         run: npm audit --audit-level=high
-      - name: Typecheck, script validation and unit tests
-        run: npm run check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Validate Node scripts
+        run: npm run check:scripts
+      - name: Unit tests
+        run: npm test
 
   deploy-worker:
     needs: test
