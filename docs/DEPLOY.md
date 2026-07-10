@@ -1,78 +1,78 @@
 # Deployment setup
 
-The workflow uses exactly one GitHub Actions secret named `CLOUDFLARE_CONFIG_JSON`. It supports two authentication modes.
+The full deployment uses exactly one GitHub Actions secret named `CLOUDFLARE_CONFIG_JSON`. It now carries deployment credentials, optional Worker runtime configuration, workers.dev setup, and smoke-test input.
 
-## Option A: Global API Key + email
+## Complete JSON shape
 
-Use this when those are the credentials already available:
-
-```json
-{"accountId":"32-character-account-id","email":"cloudflare-login@example.com","globalApiKey":"your-global-api-key"}
-```
-
-This mode maps directly to Wrangler's legacy `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_EMAIL`, and `CLOUDFLARE_API_KEY` environment variables. It does not create another token. Global API Key has broad account access, so Option B is safer for long-term CI.
-
-### Get Account ID from Cloudflare
-
-1. Sign in at https://dash.cloudflare.com/.
-2. Open **Account home**.
-3. Find the target account, open the menu at the end of its row.
-4. Select **Copy account ID**.
-
-Official guide: https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/
-
-### Get the Cloudflare email
-
-Use the exact email of the Cloudflare user that owns the Global API Key. In Cloudflare Dashboard, open the profile menu and **My Profile**. Do not use a billing contact or arbitrary team member email.
-
-### Get Global API Key from Cloudflare
-
-1. Open https://dash.cloudflare.com/profile/api-tokens.
-2. Find **API Keys**.
-3. Next to **Global API Key**, select **View**.
-4. Complete password or identity verification.
-5. Copy the value immediately and store it only in GitHub Secrets.
-
-Never paste this key into an issue, workflow file, commit, build log, screenshot, ClickUp Doc, or chat.
-
-## Option B: scoped API Token, recommended
+Scoped token mode, recommended:
 
 ```json
-{"accountId":"32-character-account-id","apiToken":"your-scoped-api-token"}
+{"accountId":"...","apiToken":"...","apiKey":"...","allowedModels":"@cf/moondream/moondream3.1-9B-A2B","defaultModel":"@cf/moondream/moondream3.1-9B-A2B","maxImageBytes":"8388608","fetchTimeoutMs":"12000","testImageUrl":"https://public.example/test.png","workersSubdomain":"my-account-subdomain"}
 ```
 
-1. Open https://dash.cloudflare.com/profile/api-tokens.
-2. Select **Create Token**, then **Create Custom Token**.
-3. Grant **Account > Workers Scripts > Edit** for the target account.
-4. Grant the Workers AI account permission exposed by the dashboard for inference/binding access. Start with Read and only broaden if Cloudflare reports a missing permission.
-5. Create the token and copy it once.
+Global key mode:
 
-Official guide: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+```json
+{"accountId":"...","email":"cloudflare-login@example.com","globalApiKey":"...","apiKey":"...","allowedModels":"...","defaultModel":"...","maxImageBytes":"8388608","fetchTimeoutMs":"12000","testImageUrl":"https://public.example/test.png","workersSubdomain":"my-account-subdomain"}
+```
 
-## Add the single secret on GitHub
+## Field reference
+
+| Field | Required | Purpose |
+| --- | --- | --- |
+| `accountId` | Yes | Target Cloudflare account |
+| `apiToken` | One auth mode | Scoped deploy token |
+| `email` + `globalApiKey` | Other auth mode | Legacy Global Key authentication |
+| `apiKey` | No | Runtime API key stored as Worker secret `API_KEY` |
+| `allowedModels` | No | Comma-separated `ALLOWED_MODELS` runtime variable |
+| `defaultModel` | No | `DEFAULT_MODEL` runtime variable |
+| `maxImageBytes` | No | `MAX_IMAGE_BYTES`; committed default remains 8 MiB |
+| `fetchTimeoutMs` | No | `FETCH_TIMEOUT_MS`; committed default remains 12 seconds |
+| `testImageUrl` | No | Public HTTPS image used after deployment |
+| `workersSubdomain` | No | Creates the account workers.dev subdomain when one does not exist |
+
+Missing optional fields are skipped. Omitting `apiKey` does not delete an existing Worker secret. Runtime non-secret values are merged into a temporary `wrangler.ci.jsonc`, never committed. Secret values are masked in Actions logs.
+
+## Get credentials
+
+1. **Account ID:** https://dash.cloudflare.com/ → Account home → account row menu → Copy account ID.
+2. **Email:** My Profile, use the exact Cloudflare user email owning the Global API Key.
+3. **Global API Key:** https://dash.cloudflare.com/profile/api-tokens → API Keys → View Global API Key.
+4. **Scoped API Token:** same page → Create Token → custom token. Grant Workers Scripts Edit and the required Workers AI account permission for the target account.
+5. **Runtime `apiKey`:** generate your own strong random client key, for example `openssl rand -hex 32`. This is not a Cloudflare credential.
+6. **`workersSubdomain`:** choose the account prefix only, for example `my-team`, not `my-team.workers.dev`. It must be globally available. Leave blank when the account already has a subdomain.
+7. **`testImageUrl`:** public HTTPS image with clear text and no confidential data. If omitted, CI uses a safe generated placeholder image containing `Image HOS Smoke Test OK`.
+
+Never commit or paste credentials into issues, logs, screenshots, ClickUp Docs, or chat.
+
+## Add the one GitHub secret
 
 1. Open https://github.com/oh250515-ai/cloudfare-worker-image-hos/settings/secrets/actions.
 2. Select **New repository secret**.
-3. Name: `CLOUDFLARE_CONFIG_JSON`.
-4. Value: paste one of the one-line JSON objects above. Use straight ASCII double quotes, no comments, no trailing comma and no outer Markdown fence.
-5. Save. Open **Actions**, select **Test, deploy Worker and publish docs**, then **Run workflow**.
+3. Name it exactly `CLOUDFLARE_CONFIG_JSON`.
+4. Paste strict one-line JSON with straight double quotes, no comments, Markdown fence, variable prefix, or trailing comma.
+5. Save, then open Actions → **Test, deploy Worker and publish docs** → **Run workflow**.
 
-If a password manager corrupts JSON punctuation, base64-encode the complete JSON object and save the base64 text as the same secret. The workflow accepts both formats.
+Base64-encoded JSON is also accepted if a password manager corrupts punctuation.
 
-## Verify deployment
+## Automated deployment sequence
 
-The `Verify Cloudflare authentication` step confirms credentials without printing them. The `Deploy Worker` step prints a URL like `https://cloudfare-worker-image-hos.<subdomain>.workers.dev`.
+1. Parse and mask the one JSON secret.
+2. Build temporary runtime config and run `npm run check` in the test job.
+3. Verify Cloudflare authentication.
+4. If `workersSubdomain` exists, call `PUT /accounts/{account_id}/workers/subdomain`; error 10036 means it already exists and is accepted.
+5. Deploy with Wrangler and capture the printed workers.dev URL.
+6. Call `POST /accounts/{account_id}/workers/scripts/{script_name}/subdomain` with `enabled:true` and `previews_enabled:false`.
+7. Store `apiKey` through `wrangler secret put API_KEY` when supplied.
+8. Smoke test `/health` and `/v1/extract`. The workflow fails if HTTP/JSON is invalid, `ok` is not true, or `result.rawText` is empty. Logs show only `ok`, model, and request ID.
 
-```bash
-curl https://YOUR-WORKER.workers.dev/health
-```
+## Verify and troubleshoot
 
-GitHub Pages is documentation only: https://oh250515-ai.github.io/cloudfare-worker-image-hos/. It cannot run the extraction API.
+GitHub Pages is documentation only: https://oh250515-ai.github.io/cloudfare-worker-image-hos/. The extraction API is the workers.dev URL captured by the deploy job.
 
-## Common failures
-
-- `Invalid JSON`: recreate the secret from a one-line sample; do not include `CLOUDFLARE_CONFIG_JSON=`.
-- `Provide either apiToken...`: field names are case-sensitive.
-- Authentication failure in Global mode: email does not own the key, key was rotated, or account ID belongs to another account.
-- Authorization failure: the Cloudflare user/token lacks Workers Scripts or Workers AI permission.
-- Pages succeeds while Worker fails: expected, the jobs deploy independently after tests.
+- Invalid JSON: rebuild from the one-line samples.
+- Authentication failure: wrong owner email, rotated key/token, or mismatched account ID.
+- Authorization failure: add Workers Scripts/Workers AI permissions.
+- Account subdomain failure: selected prefix is unavailable or the credential cannot edit Workers.
+- URL capture failure: inspect Wrangler output; the script intentionally fails rather than claiming deployment success.
+- Smoke failure: confirm the test image is public, returns `image/*`, contains readable text, and the selected model supports image input.

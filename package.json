@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm test"
+    "check:scripts": "node --check scripts/prepare-ci-config.mjs && node --check scripts/cloudflare-subdomain.mjs && node --check scripts/smoke-test.mjs",
+    "check": "npm run typecheck && npm run check:scripts && npm test"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

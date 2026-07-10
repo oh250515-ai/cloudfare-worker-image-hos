@@ -3,6 +3,7 @@
   "name": "cloudfare-worker-image-hos",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-10",
+  "workers_dev": true,
   "ai": { "binding": "AI" },
   "observability": { "enabled": true },
   "vars": {

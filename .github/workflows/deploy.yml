@@ -34,53 +34,34 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Load the single Cloudflare JSON secret
+      - name: Parse credentials and runtime config from the single JSON secret
         env:
           CONFIG_INPUT: ${{ secrets.CLOUDFLARE_CONFIG_JSON }}
-        run: |
-          node - <<'NODE'
-          const fs = require('fs');
-          let raw = (process.env.CONFIG_INPUT || '').trim();
-          if (!raw) throw new Error('Missing repository secret CLOUDFLARE_CONFIG_JSON');
-
-          raw = raw.replace(/^CLOUDFLARE_CONFIG_JSON\s*=\s*/, '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-          let cfg;
-          try {
-            cfg = JSON.parse(raw);
-          } catch (jsonError) {
-            try { cfg = JSON.parse(Buffer.from(raw, 'base64').toString('utf8')); }
-            catch { throw new Error(`Invalid CLOUDFLARE_CONFIG_JSON: ${jsonError.message}. See docs/DEPLOY.md`); }
-          }
-
-          if (!cfg || Array.isArray(cfg) || typeof cfg !== 'object') throw new Error('Cloudflare config must be a JSON object');
-          const accountId = String(cfg.accountId || '').trim();
-          if (!accountId) throw new Error('accountId is required');
-          fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_ACCOUNT_ID=${accountId}\n`);
-
-          const apiToken = String(cfg.apiToken || '').trim();
-          const globalApiKey = String(cfg.globalApiKey || '').trim();
-          const email = String(cfg.email || '').trim();
-
-          if (apiToken) {
-            if (apiToken.includes('***')) throw new Error('apiToken is masked or incomplete');
-            console.log('Cloudflare auth mode: scoped API Token');
-            console.log(`::add-mask::${apiToken}`);
-            fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_API_TOKEN=${apiToken}\n`);
-          } else if (globalApiKey && email) {
-            if (globalApiKey.includes('***')) throw new Error('globalApiKey is masked or incomplete');
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('email is invalid');
-            console.log('Cloudflare auth mode: Global API Key + email (legacy, broad access)');
-            console.log(`::add-mask::${globalApiKey}`);
-            console.log(`::add-mask::${email}`);
-            fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_API_KEY=${globalApiKey}\nCLOUDFLARE_EMAIL=${email}\n`);
-          } else {
-            throw new Error('Provide either apiToken, or both globalApiKey and email');
-          }
-          NODE
+        run: node scripts/prepare-ci-config.mjs
       - name: Verify Cloudflare authentication
         run: npx wrangler@latest whoami
-      - name: Deploy Worker
-        run: npx wrangler@latest deploy
+      - name: Ensure account workers.dev subdomain exists when configured
+        run: node scripts/cloudflare-subdomain.mjs account
+      - name: Deploy Worker and capture URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler@latest deploy --config wrangler.ci.jsonc 2>&1 | tee deploy.log
+          WORKER_URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | tail -n 1 || true)"
+          if [ -z "$WORKER_URL" ]; then
+            echo "Could not find a workers.dev URL in Wrangler output" >&2
+            exit 1
+          fi
+          echo "WORKER_URL=$WORKER_URL" >> "$GITHUB_ENV"
+          echo "Worker URL captured"
+      - name: Enable workers.dev route for this script
+        run: node scripts/cloudflare-subdomain.mjs script
+      - name: Apply Worker API key when configured
+        if: env.HAS_WORKER_API_KEY == 'true'
+        shell: bash
+        run: printf '%s' "$WORKER_API_KEY" | npx wrangler@latest secret put API_KEY --config wrangler.ci.jsonc
+      - name: Smoke test deployed API
+        run: node scripts/smoke-test.mjs
 
   deploy-pages:
     needs: test

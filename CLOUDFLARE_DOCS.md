@@ -4,52 +4,42 @@ Checked against Cloudflare documentation and current Workers SDK behavior on 10 
 
 ## Platform choices
 
-- Workers AI binding exposes inference as `env.AI.run()` and avoids embedding Cloudflare credentials in Worker code.
+- Workers AI is invoked through the `AI` binding as `env.AI.run()`.
 - Default model: `@cf/moondream/moondream3.1-9B-A2B`, documented for OCR, pointing, visual reasoning and structured output.
-- Alternative: `@cf/mistralai/mistral-small-3.1-24b-instruct` for harder vision/reasoning tasks.
-- Meta Llama 3.2 Vision requires a one-time license acceptance, so it is not the zero-touch default.
-- JSON Mode exists for compatible text-generation models. This implementation also prompt-enforces and normalizes JSON because vision model interfaces differ.
+- Runtime model allowlist, default model and limits can be supplied from the one GitHub secret without committing them.
+- JSON Mode varies by model, so the Worker also prompt-enforces and normalizes JSON.
+
+## One-secret CI configuration
+
+`CLOUDFLARE_CONFIG_JSON` supports scoped API Token or email + Global API Key authentication, plus optional `apiKey`, `allowedModels`, `defaultModel`, `maxImageBytes`, `fetchTimeoutMs`, `testImageUrl`, and `workersSubdomain` fields. `API_KEY` is stored with `wrangler secret put`; non-secret runtime values are written only to an ephemeral CI Wrangler config.
+
+Wrangler prefers `CLOUDFLARE_API_TOKEN`. Current Workers SDK still exposes legacy `CLOUDFLARE_API_KEY` with `CLOUDFLARE_EMAIL`; the workflow calls Wrangler directly because wrangler-action does not support Global Key auth.
+
+## workers.dev automation
+
+Cloudflare currently documents:
+
+- `PUT /accounts/{account_id}/workers/subdomain` to create an account Workers subdomain. CI calls it only when `workersSubdomain` is supplied. Error code 10036 (`account_has_subdomain`) is idempotent success.
+- `POST /accounts/{account_id}/workers/scripts/{script_name}/subdomain` with `{ "enabled": true, "previews_enabled": false }` to expose the deployed script on workers.dev. CI calls it after upload because the script must exist.
+
+The API helper selects Bearer Token auth or legacy `X-Auth-Email`/`X-Auth-Key` headers from the already-masked environment. Tokens need adequate Workers Scripts permissions.
+
+## Post-deploy verification
+
+The deploy command is piped through `tee` with `pipefail`; CI extracts the workers.dev URL and refuses to continue if none is printed. The smoke test checks `/health`, then sends the example extraction request with the configured public image URL and optional `x-api-key`. It does not print extracted content.
 
 ## Free tier
 
-Workers Free currently documents 100,000 requests/day, 128 MB memory and 10 ms CPU per invocation. Workers AI currently includes 10,000 Neurons/day at no charge, reset at 00:00 UTC. Usage must still be monitored.
-
-## CI authentication
-
-The single `CLOUDFLARE_CONFIG_JSON` secret supports:
-
-```json
-{"accountId":"...","apiToken":"..."}
-```
-
-or:
-
-```json
-{"accountId":"...","email":"...","globalApiKey":"..."}
-```
-
-Current Workers SDK declares `CLOUDFLARE_API_KEY` plus `CLOUDFLARE_EMAIL` as legacy authentication variables and prefers `CLOUDFLARE_API_TOKEN`. The workflow uses Wrangler CLI directly, not `cloudflare/wrangler-action`, because that action no longer supports Global API Key authentication.
-
-Global mode authenticates Wrangler directly. It deliberately does not mint a token during each build. Cloudflare's current token-via-API guide requires an initial token created with the **Create additional tokens** template; Global API Key is not the documented bootstrap credential for that flow. Creating disposable tokens at every push would also add lifecycle and privilege risk without improving this deployment.
-
-Use Global mode to unblock deployment, then rotate to a scoped API Token when practical. Detailed setup: `docs/DEPLOY.md`.
-
-## GitHub Pages versus Worker
-
-GitHub Pages serves static documentation at https://oh250515-ai.github.io/cloudfare-worker-image-hos/. It does not execute Cloudflare code. The API runs at the `workers.dev` URL emitted by `wrangler deploy`.
-
-## Runtime configuration
-
-`wrangler.jsonc` defines the AI binding, compatibility date and observability. Set runtime secrets with `wrangler secret put API_KEY`. Optional variables are `DEFAULT_MODEL`, `ALLOWED_MODELS`, `MAX_IMAGE_BYTES`, and `FETCH_TIMEOUT_MS`.
+Workers Free currently documents 100,000 requests/day, 128 MB memory and 10 ms CPU per invocation. Workers AI currently includes 10,000 Neurons/day at no charge, reset at 00:00 UTC. Each deployment smoke test consumes one inference.
 
 ## Official references
 
 - https://developers.cloudflare.com/workers-ai/configuration/bindings/
 - https://developers.cloudflare.com/workers-ai/features/json-mode/
 - https://developers.cloudflare.com/workers-ai/models/moondream3.1-9B-A2B/
+- https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/subdomain/methods/create/
+- https://developers.cloudflare.com/api/node/resources/workers/subresources/subdomains/methods/update/
+- https://developers.cloudflare.com/workers/configuration/routing/workers-dev/
 - https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/
-- https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/
-- https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
-- https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/
 - https://developers.cloudflare.com/workers/platform/limits/
 - https://developers.cloudflare.com/workers-ai/platform/pricing/

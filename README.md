@@ -6,23 +6,19 @@ Configurable image-to-JSON API on Cloudflare Workers AI. Each request may select
 
 **https://oh250515-ai.github.io/cloudfare-worker-image-hos/**
 
-GitHub Pages is documentation, not the extraction endpoint. Send API calls to the `workers.dev` URL printed by a successful `deploy-worker` job.
+GitHub Pages is documentation, not the extraction endpoint. The API is the `workers.dev` URL captured by the deploy job.
 
-## Deploy with one GitHub secret
+## One-secret deployment
 
-Create one repository secret named `CLOUDFLARE_CONFIG_JSON`. Both modes are supported:
-
-```json
-{"accountId":"...","email":"...","globalApiKey":"..."}
-```
-
-or the safer long-term mode:
+`CLOUDFLARE_CONFIG_JSON` now contains deployment credentials plus optional runtime and smoke-test settings:
 
 ```json
-{"accountId":"...","apiToken":"..."}
+{"accountId":"...","apiToken":"...","apiKey":"...","allowedModels":"@cf/moondream/moondream3.1-9B-A2B","defaultModel":"@cf/moondream/moondream3.1-9B-A2B","maxImageBytes":"8388608","fetchTimeoutMs":"12000","testImageUrl":"https://public.example/test.png","workersSubdomain":"my-team"}
 ```
 
-Then run the GitHub workflow or push to `main`. Full click-by-click setup, credential sources and troubleshooting: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+Global Key auth remains supported by replacing `apiToken` with `email` and `globalApiKey`. Every runtime field is optional; missing fields are skipped. Full field reference and click-by-click credential setup: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
+On every `main` push, Actions runs checks, prepares runtime config without committing secrets, optionally creates the account workers.dev subdomain, deploys, enables the script route, applies `API_KEY`, then smoke-tests both `/health` and `/v1/extract`.
 
 ## Local development
 
@@ -33,12 +29,6 @@ npm run dev
 npm run check
 ```
 
-```bash
-curl -X POST http://localhost:8787/v1/extract \
-  -H 'content-type: application/json' \
-  -d @examples/winform.json
-```
-
 ## Production API
 
 ```bash
@@ -46,6 +36,7 @@ curl https://YOUR-WORKER.workers.dev/health
 
 curl -X POST https://YOUR-WORKER.workers.dev/v1/extract \
   -H 'content-type: application/json' \
+  -H 'x-api-key: YOUR_RUNTIME_API_KEY' \
   -d @examples/winform.json
 ```
 
