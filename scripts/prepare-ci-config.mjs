@@ -22,7 +22,8 @@ if (!cfg || Array.isArray(cfg) || typeof cfg !== "object") fail("Cloudflare conf
 
 const accountId = clean(cfg.accountId);
 const apiToken = clean(cfg.apiToken);
-const globalApiKey = clean(cfg.globalApiKey);
+// Existing config compatibility: apiGlobalToken is canonical; older aliases still work.
+const globalApiKey = clean(cfg.apiGlobalToken || cfg.apiGlobalKey || cfg.globalApiKey || cfg.apiglobaltoken);
 const email = clean(cfg.email);
 if (!accountId) fail("accountId is required");
 if (apiToken) {
@@ -31,13 +32,13 @@ if (apiToken) {
   envLine("CLOUDFLARE_API_TOKEN", apiToken);
   console.log("Cloudflare auth mode: scoped API Token");
 } else if (globalApiKey && email) {
-  if (globalApiKey.includes("***")) fail("globalApiKey is masked or incomplete");
+  if (globalApiKey.includes("***")) fail("apiGlobalToken is masked or incomplete");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("email is invalid");
   mask(globalApiKey); mask(email);
   envLine("CLOUDFLARE_API_KEY", globalApiKey);
   envLine("CLOUDFLARE_EMAIL", email);
   console.log("Cloudflare auth mode: Global API Key + email (legacy, broad access)");
-} else fail("Provide either apiToken, or both globalApiKey and email");
+} else fail("Provide either apiToken, or both apiGlobalToken and email");
 envLine("CLOUDFLARE_ACCOUNT_ID", accountId);
 
 const apiKey = clean(cfg.apiKey);
