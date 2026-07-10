@@ -1,0 +1,65 @@
+name: Test, deploy Worker and publish docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: production
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npm run check
+
+  deploy-worker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - name: Read the single Cloudflare JSON secret
+        env:
+          CONFIG_JSON: ${{ secrets.CLOUDFLARE_CONFIG_JSON }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(process.env.CONFIG_JSON || '{}');
+          if (!cfg.accountId || !cfg.apiToken) throw new Error('CLOUDFLARE_CONFIG_JSON requires accountId and apiToken');
+          console.log(`::add-mask::${cfg.apiToken}`);
+          fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_ACCOUNT_ID=${cfg.accountId}\nCLOUDFLARE_API_TOKEN=${cfg.apiToken}\n`);
+          NODE
+      - run: npx wrangler@latest deploy
+
+  deploy-pages:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

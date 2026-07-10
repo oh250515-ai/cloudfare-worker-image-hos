@@ -1,0 +1,18 @@
+{
+  "imageUrl": "https://example.com/replace-with-public-winform-screenshot.png",
+  "prompt": "Read every visible character. Extract application, login/session and error information. Separately identify handwritten notes, colored circles, arrows, boxes and highlights.",
+  "model": "@cf/moondream/moondream3.1-9B-A2B",
+  "parameters": {"max_tokens": 1800, "temperature": 0},
+  "output": {
+    "includeRawText": true,
+    "includeAnnotations": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "application": {"type": ["object", "null"]},
+        "session": {"type": ["object", "null"]},
+        "error": {"type": ["object", "null"]}
+      }
+    }
+  }
+}
