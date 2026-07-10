@@ -1,35 +1,23 @@
 # API guide
 
-## POST /v1/extract
+`POST /v1/extract` accepts `imageUrl`, `imageBase64`, or both. Base64 is preferred; invalid base64 falls back to URL. Add `x-api-key` when configured.
 
-Send `content-type: application/json`; add `x-api-key` when runtime `API_KEY` is configured. Supply `imageBase64`, `imageUrl`, or both. Base64 is preferred; if it is invalid and `imageUrl` exists, the Worker automatically falls back to the URL.
+## Moondream behavior
 
-### URL input
+Moondream now runs two independent passes. Pass 1 performs schema-free OCR and produces `rawText`. Pass 2 extracts only compact `data` and annotations. This prevents an unrelated schema from forcing document text into fields such as `loginUser`, which previously caused repetition loops. Unknown or unrelated fields become null.
 
-```json
-{"imageUrl":"https://example.com/error.png","prompt":"Extract all text and annotations","model":"@cf/moondream/moondream3.1-9B-A2B","parameters":{"max_tokens":1800},"output":{"includeRawText":true,"includeAnnotations":true,"schema":{"type":"object"}}}
-```
-
-### Base64 input with URL fallback
+Recommended request:
 
 ```json
-{"imageBase64":"iVBORw0KGgo...","imageMimeType":"image/png","imageUrl":"https://example.com/fallback.png","model":"@cf/moondream/moondream3.1-9B-A2B","adapter":"auto","prompt":"Read everything"}
+{"imageUrl":"https://i.vgy.me/6HxY5i.png","prompt":"Dùng OCR trích toàn bộ thông tin trên hình","model":"@cf/moondream/moondream3.1-9B-A2B","parameters":{"max_tokens":4096,"temperature":0.2},"output":{"includeRawText":true,"includeAnnotations":true,"schema":{"type":"object","properties":{"appName":{"type":["string","null"]},"loginUser":{"type":["string","null"]},"errorMessage":{"type":["string","null"]}}}}}
 ```
 
-`imageBase64` may also be a complete `data:image/png;base64,...` URI. The decoded image must fit `MAX_IMAGE_BYTES`. The request-body allowance scales from that runtime limit.
-
-## Model adapters
-
-`adapter` defaults to `auto`: Moondream uses its query contract with data URI and automatically retries the documented byte/prompt contract; Mistral Small 3.1 and known vision-instruct models use chat-vision content; image-to-text models such as LLaVA use byte-array plus prompt. For an unknown compatible model, explicitly pass `moondream`, `chat-vision`, or `image-prompt`.
+For dense Vietnamese screenshots use `max_tokens` 4096 or more and temperature 0.1-0.2. A schema must match the image. For generic OCR, omit `output.schema`; `rawText` still returns independently.
 
 ## Response
 
-```json
-{"ok":true,"requestId":"uuid","model":"@cf/moondream/moondream3.1-9B-A2B","adapter":"moondream-query","imageSource":"base64","result":{"rawText":"Complete text...","data":{},"annotations":[],"confidence":0.91},"warnings":[]}
-```
+The stable response contains `result.rawText`, `result.data`, `result.annotations`, `warnings`, and per-pass `modelMeta`. `adapter: moondream-two-pass` confirms the separated pipeline.
 
-Plain text from a model is preserved as `rawText` with a warning instead of being discarded. Unknown values remain null.
+## Other adapters
 
-## Other endpoints and errors
-
-`GET /health` checks uptime. `GET /v1/models` returns policy and supported adapter names. Errors include `INVALID_JSON`, `INVALID_INPUT`, `REQUEST_TOO_LARGE`, `UNAUTHORIZED`, `MODEL_NOT_ALLOWED`, and `EXTRACTION_FAILED`.
+`auto` selects Moondream two-pass, chat-vision for known multimodal instruction models, or byte/prompt for classic image-to-text models. Explicit values: `moondream`, `chat-vision`, `image-prompt`.
