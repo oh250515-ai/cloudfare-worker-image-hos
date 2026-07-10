@@ -1,0 +1,46 @@
+name: Publish v2.1.0 release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - CHANGELOG.md
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view v2.1.0 >/dev/null 2>&1; then
+            echo "Release v2.1.0 already exists"
+            exit 0
+          fi
+          gh release create v2.1.0 \
+            --target "$GITHUB_SHA" \
+            --title "v2.1.0: Workers AI Gateway" \
+            --notes "$(cat <<'EOF'
+          ## Highlights
+          - Generic text, code, chat and raw Workers AI endpoints
+          - Image URL/base64 extraction with model adapters
+          - One-secret Cloudflare deployment and automatic workers.dev setup
+          - Node 24 toolchain, dependency audit and upgraded GitHub Actions
+          - Dependabot for npm and Actions
+          - Vision benchmark report, architecture diagrams and complete configuration reference
+
+          ## Validation
+          Typecheck, unit tests, dependency audit, Worker deploy, Pages deploy and rawText smoke test are green.
+          EOF
+          )"
