@@ -98,6 +98,31 @@ function normalizeAiResponse(value: unknown, includeRawText: boolean, includeAnn
   };
 }
 
+function cleanParameters(input: ExtractRequest): Record<string, unknown> {
+  const parameters = { ...(input.parameters || {}) };
+  for (const reserved of ["image", "prompt", "question", "task"]) delete parameters[reserved];
+  return parameters;
+}
+
+async function runVisionModel(model: string, url: URL, input: ExtractRequest, env: Env): Promise<unknown> {
+  const parameters = cleanParameters(input);
+  const prompt = buildPrompt(input);
+  if (model === DEFAULT_MODEL) {
+    // Moondream's current contract uses task/query + public URL + question.
+    // stream:false is required because this API returns one JSON response.
+    return env.AI.run(model, {
+      ...parameters,
+      task: "query",
+      image: url.toString(),
+      question: prompt,
+      stream: false,
+      reasoning: false
+    });
+  }
+  const bytes = await fetchImage(url, Number(env.MAX_IMAGE_BYTES || 8388608), Number(env.FETCH_TIMEOUT_MS || 12000));
+  return env.AI.run(model, { ...parameters, image: [...bytes], prompt });
+}
+
 async function handleExtract(request: Request, env: Env, requestId: string): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > 65536) return json({ ok: false, requestId, error: { code: "REQUEST_TOO_LARGE", message: "JSON body exceeds 64 KiB" } }, 413);
@@ -108,10 +133,7 @@ async function handleExtract(request: Request, env: Env, requestId: string): Pro
   if (!isModelAllowed(model, env.ALLOWED_MODELS)) return json({ ok: false, requestId, error: { code: "MODEL_NOT_ALLOWED", message: "Model is invalid or not allowed" } }, 400);
   try {
     const url = validatePublicImageUrl(input.imageUrl);
-    const bytes = await fetchImage(url, Number(env.MAX_IMAGE_BYTES || 8388608), Number(env.FETCH_TIMEOUT_MS || 12000));
-    const parameters = { ...(input.parameters || {}) };
-    delete parameters.image; delete parameters.prompt;
-    const aiResponse = await env.AI.run(model, { ...parameters, image: [...bytes], prompt: buildPrompt(input) });
+    const aiResponse = await runVisionModel(model, url, input, env);
     const normalized = normalizeAiResponse(aiResponse, input.output?.includeRawText !== false, input.output?.includeAnnotations !== false);
     return json({ ok: true, requestId, model, result: normalized.result, warnings: normalized.warnings, metadata: input.metadata || {} });
   } catch (error) {
