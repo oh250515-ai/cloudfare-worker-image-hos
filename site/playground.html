@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workers AI Playground | Image HOS API</title>
+<style>
+:root{--bg:oklch(97% .008 265);--surface:oklch(99% .004 265);--surface-2:oklch(95.5% .01 265);--ink:oklch(24% .03 265);--muted:oklch(52% .02 265);--line:oklch(89% .015 265);--accent:oklch(55% .17 274);--accent-ink:oklch(98% .01 274);--ok:oklch(58% .13 150);--err:oklch(56% .18 25);--code:oklch(20% .03 265);--code-ink:oklch(92% .02 265)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-optical-sizing:auto}
+.wrap{width:min(1140px,100%);margin:auto;padding:40px clamp(16px,4vw,56px) 80px}
+.eyebrow{color:var(--accent);font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+h1{margin:10px 0 8px;font-size:clamp(2rem,5vw,3.1rem);line-height:1;letter-spacing:-.04em;text-wrap:balance}
+.sub{max-width:64ch;color:var(--muted);font-size:1.05rem;margin:0 0 32px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:.78rem;font-weight:700;letter-spacing:.02em;margin:18px 0 6px;color:var(--muted)}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit}
+textarea{font:14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px oklch(55% .17 274/.22)}
+.row{display:flex;gap:12px}.row>*{flex:1}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.tab{min-height:38px;padding:8px 14px;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--muted);font-size:.85rem;font-weight:650;cursor:pointer}
+.tab[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tab:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(55% .17 274/.25)}
+.hint{font-size:.76rem;color:var(--muted);margin-top:4px}
+.bench{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.bench summary{cursor:pointer;font-weight:700;font-size:.85rem}
+.actions{display:flex;align-items:center;gap:14px;margin-top:22px}
+button.run{min-height:46px;padding:0 26px;border:0;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-weight:750;font-size:.95rem;cursor:pointer;transition:transform .12s cubic-bezier(.16,1,.3,1),filter .12s}
+button.run:hover{filter:brightness(1.06)}button.run:active{transform:translateY(1px)}
+button.run:disabled{opacity:.55;cursor:progress}
+button.ghost{background:none;border:1px solid var(--line);color:var(--ink);min-height:38px;padding:0 14px;border-radius:9px;font-weight:650;cursor:pointer}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.82rem;color:var(--muted);margin-bottom:10px;font-variant-numeric:tabular-nums}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:99px;font-size:.74rem;font-weight:700}
+.badge.ok{background:oklch(58% .13 150/.14);color:var(--ok)}
+.badge.err{background:oklch(56% .18 25/.14);color:var(--err)}
+pre{margin:0;padding:16px;border-radius:11px;background:var(--code);color:var(--code-ink);font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow:auto;max-height:460px;white-space:pre-wrap;word-break:break-word}
+h2{font-size:.95rem;letter-spacing:.02em;margin:0 0 10px;text-transform:uppercase;color:var(--muted)}
+.panel{position:sticky;top:24px}
+.empty{padding:28px 16px;border:1px dashed var(--line);border-radius:11px;color:var(--muted);text-align:center;font-size:.9rem}
+.text-out{margin:0 0 14px;padding:14px 16px;border:1px solid var(--line);border-radius:11px;background:var(--surface);white-space:pre-wrap;max-height:240px;overflow:auto}
+a{color:var(--accent)}
+footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="eyebrow">Cloudflare Workers AI</div>
+<h1>Playground</h1>
+<p class="sub">Gọi thử bất kỳ model text, code, chat hay vision nào ngay trong trình duyệt. Chọn endpoint, model, chỉnh tham số, bật benchmark để so nhiều model cùng lúc.</p>
+<div class="grid">
+  <section>
+    <label for="base">Worker base URL</label>
+    <input id="base" value="https://cloudfare-worker-image-hos.oh25-0515.workers.dev" spellcheck="false">
+    <div class="row"><div><label for="key">x-api-key (nếu bật)</label><input id="key" placeholder="để trống nếu Worker không đặt API_KEY" spellcheck="false"></div></div>
+    <label>Endpoint</label>
+    <div class="tabs" id="tabs" role="tablist">
+      <button class="tab" role="tab" data-ep="text" aria-selected="true">/v1/text</button>
+      <button class="tab" role="tab" data-ep="code" aria-selected="false">/v1/code</button>
+      <button class="tab" role="tab" data-ep="chat" aria-selected="false">/v1/chat</button>
+      <button class="tab" role="tab" data-ep="run" aria-selected="false">/v1/run</button>
+      <button class="tab" role="tab" data-ep="extract" aria-selected="false">/v1/extract</button>
+    </div>
+    <label for="model">Model <button class="ghost" id="loadModels" style="float:right;margin-top:-4px">Tải /v1/models</button></label>
+    <input id="model" list="modelList" placeholder="để trống = dùng mặc định của endpoint" spellcheck="false">
+    <datalist id="modelList"><option value="@cf/meta/llama-3.1-8b-instruct"><option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast"><option value="@cf/zai-org/glm-4.7-flash"><option value="@cf/qwen/qwen2.5-coder-32b-instruct"><option value="@cf/moonshotai/kimi-k2.7-code"><option value="@cf/mistralai/mistral-small-3.1-24b-instruct"><option value="@cf/meta/llama-3.2-11b-vision-instruct"><option value="@cf/moondream/moondream3.1-9B-A2B"></datalist>
+    <div class="hint" id="modelHint">Mặc định text: @cf/meta/llama-3.1-8b-instruct</div>
+    <div id="fieldPrompt"><label for="prompt">Prompt</label><textarea id="prompt" rows="5">Viết một câu chào ngắn bằng tiếng Việt.</textarea></div>
+    <div id="fieldMessages" hidden><label for="messages">messages (JSON)</label><textarea id="messages" rows="6">[
+  { "role": "system", "content": "Bạn là trợ lý hữu ích." },
+  { "role": "user", "content": "Giải thích Cloudflare Workers trong 2 câu." }
+]</textarea></div>
+    <div id="fieldRun" hidden><label for="runInput">input (JSON) truyền thẳng vào env.AI.run</label><textarea id="runInput" rows="6">{
+  "messages": [{ "role": "user", "content": "Xin chào" }],
+  "max_tokens": 256
+}</textarea></div>
+    <div id="fieldExtract" hidden><label for="imageUrl">imageUrl</label><input id="imageUrl" placeholder="https://..." spellcheck="false"><label for="exPrompt">prompt</label><textarea id="exPrompt" rows="2">Dùng OCR trích toàn bộ thông tin trên hình.</textarea></div>
+    <div class="row" id="paramRow"><div><label for="maxTokens">max_tokens</label><input id="maxTokens" type="number" value="512" min="1"></div><div><label for="temp">temperature</label><input id="temp" type="number" value="0.7" step="0.1" min="0"></div><div><label for="topP">top_p</label><input id="topP" type="number" value="0.9" step="0.05" min="0" max="1"></div></div>
+    <details class="bench"><summary>Benchmark (so nhiều model)</summary><label for="benchModels">models, phân tách dấu phẩy (để trống = model đang chọn)</label><input id="benchModels" placeholder="@cf/meta/llama-3.1-8b-instruct, @cf/zai-org/glm-4.7-flash" spellcheck="false"><div class="row" style="margin-top:6px"><div><label for="benchRuns">runs mỗi model (1-5)</label><input id="benchRuns" type="number" value="2" min="1" max="5"></div><div style="display:flex;align-items:flex-end"><label style="display:flex;gap:8px;align-items:center;margin:0;font-size:.85rem;color:var(--ink)"><input type="checkbox" id="benchOn" style="width:auto"> Bật benchmark</label></div></div></details>
+    <div class="actions"><button class="run" id="send">Gửi request</button><span class="hint" id="status">sẵn sàng</span></div>
+  </section>
+  <section class="panel"><h2>Kết quả</h2><div class="meta" id="meta" hidden></div><div class="text-out" id="textOut" hidden></div><pre id="out"><span class="empty" style="display:block">Chưa có kết quả. Cấu hình bên trái rồi bấm Gửi request.</span></pre><footer>Playground gọi trực tiếp Worker của bạn. Không lưu khóa nào. Xem <a href="./">tổng quan</a> · <a href="./models.html">danh mục model</a>.</footer></section>
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let ep="text";
+const defaults={text:"@cf/meta/llama-3.1-8b-instruct",code:"@cf/qwen/qwen2.5-coder-32b-instruct",chat:"@cf/meta/llama-3.1-8b-instruct",run:"@cf/meta/llama-3.1-8b-instruct",extract:"@cf/moondream/moondream3.1-9B-A2B"};
+function show(id,on){$(id).hidden=!on}
+function setEp(next){ep=next;document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected",String(t.dataset.ep===next)));show("fieldPrompt",next==="text"||next==="code");show("fieldMessages",next==="chat");show("fieldRun",next==="run");show("fieldExtract",next==="extract");show("paramRow",next!=="run");$("modelHint").textContent="Mặc định "+next+": "+defaults[next];}
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>setEp(t.dataset.ep)));
+$("loadModels").addEventListener("click",async()=>{const base=$("base").value.replace(/\/$/,"");try{const r=await fetch(base+"/v1/models");const j=await r.json();$("modelHint").textContent="allowed: "+JSON.stringify(j.allowed)+" · default: "+j.default;}catch(e){$("modelHint").textContent="Không tải được /v1/models: "+e.message}});
+function params(){const p={};const mt=+$("maxTokens").value;const tp=+$("temp").value;const pp=+$("topP").value;if(mt)p.max_tokens=mt;if(!Number.isNaN(tp))p.temperature=tp;if(!Number.isNaN(pp))p.top_p=pp;return p}
+function buildBody(){const model=$("model").value.trim()||undefined;const b={};if(model)b.model=model;if(ep==="text"||ep==="code"){b.prompt=$("prompt").value;b.parameters=params();}else if(ep==="chat"){b.messages=JSON.parse($("messages").value);b.parameters=params();}else if(ep==="run"){b.input=JSON.parse($("runInput").value);}else if(ep==="extract"){b.imageUrl=$("imageUrl").value.trim();b.prompt=$("exPrompt").value;b.parameters=params();b.output={includeRawText:true,includeAnnotations:true};}if($("benchOn").checked&&ep!=="extract"){const models=$("benchModels").value.split(",").map(s=>s.trim()).filter(Boolean);b.benchmark={runs:Math.max(1,Math.min(+$("benchRuns").value||2,5))};if(models.length)b.benchmark.models=models;}return b;}
+$("send").addEventListener("click",async()=>{const base=$("base").value.replace(/\/$/,"");const path=ep==="extract"?"/v1/extract":"/v1/"+ep;let body;try{body=buildBody()}catch(e){$("status").textContent="JSON lỗi: "+e.message;return}const headers={"content-type":"application/json"};const key=$("key").value.trim();if(key)headers["x-api-key"]=key;$("send").disabled=true;$("status").textContent="đang gọi "+path+"…";$("meta").hidden=true;$("textOut").hidden=true;const t0=performance.now();try{const r=await fetch(base+path,{method:"POST",headers,body:JSON.stringify(body)});const j=await r.json();const ms=Math.round(performance.now()-t0);const okBadge='<span class="badge '+(j.ok?"ok":"err")+'">'+(j.ok?"ok":"error")+'</span>';const bits=[okBadge,"HTTP "+r.status,"round-trip "+ms+"ms"];if(j.timingMs!=null)bits.push("model "+j.timingMs+"ms");if(j.model)bits.push(j.model);if(j.mode==="benchmark")bits.push("benchmark");$("meta").innerHTML=bits.map(x=>typeof x==="string"&&x.startsWith("<")?x:'<span>'+x+'</span>').join("");$("meta").hidden=false;const text=j.text||j.result?.rawText;if(text){$("textOut").textContent=text;$("textOut").hidden=false;}$("out").textContent=JSON.stringify(j,null,2);$("status").textContent="xong";}catch(e){$("out").textContent="Lỗi mạng: "+e.message;$("status").textContent="lỗi";}finally{$("send").disabled=false;}});
+setEp("text");
+</script>
+</body>
+</html>
