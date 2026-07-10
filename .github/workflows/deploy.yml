@@ -34,18 +34,44 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Read the single Cloudflare JSON secret
+      - name: Validate the single Cloudflare secret
         env:
-          CONFIG_JSON: ${{ secrets.CLOUDFLARE_CONFIG_JSON }}
+          CONFIG_INPUT: ${{ secrets.CLOUDFLARE_CONFIG_JSON }}
         run: |
           node - <<'NODE'
           const fs = require('fs');
-          const cfg = JSON.parse(process.env.CONFIG_JSON || '{}');
-          if (!cfg.accountId || !cfg.apiToken) throw new Error('CLOUDFLARE_CONFIG_JSON requires accountId and apiToken');
+          let raw = (process.env.CONFIG_INPUT || '').trim();
+          if (!raw) throw new Error('Missing repository secret CLOUDFLARE_CONFIG_JSON');
+
+          // Accept strict JSON, base64-encoded JSON, or an accidentally pasted
+          // CLOUDFLARE_CONFIG_JSON= prefix. Never print credential contents.
+          raw = raw.replace(/^CLOUDFLARE_CONFIG_JSON\s*=\s*/, '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+          let cfg;
+          try {
+            cfg = JSON.parse(raw);
+          } catch (jsonError) {
+            try {
+              cfg = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+            } catch {
+              throw new Error(`CLOUDFLARE_CONFIG_JSON is invalid JSON at ${jsonError.message}. Use one line: {"accountId":"...","apiToken":"..."}`);
+            }
+          }
+
+          if (!cfg || Array.isArray(cfg) || typeof cfg !== 'object') throw new Error('CLOUDFLARE_CONFIG_JSON must be a JSON object');
+          if (!cfg.accountId || typeof cfg.accountId !== 'string') throw new Error('CLOUDFLARE_CONFIG_JSON.accountId is required');
+          if (!cfg.apiToken || typeof cfg.apiToken !== 'string') {
+            if (cfg.globalApiKey) throw new Error('Global API Key is not accepted by current Wrangler CI. Create a scoped API Token and set it as apiToken. Account ID plus Global API Key cannot create/authenticate a token without the Cloudflare user email.');
+            throw new Error('CLOUDFLARE_CONFIG_JSON.apiToken is required');
+          }
+          if (cfg.apiToken.includes('***')) throw new Error('apiToken contains masked placeholder characters, paste the real scoped API Token');
+
           console.log(`::add-mask::${cfg.apiToken}`);
-          fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_ACCOUNT_ID=${cfg.accountId}\nCLOUDFLARE_API_TOKEN=${cfg.apiToken}\n`);
+          fs.appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_ACCOUNT_ID=${cfg.accountId.trim()}\nCLOUDFLARE_API_TOKEN=${cfg.apiToken.trim()}\n`);
           NODE
-      - run: npx wrangler@latest deploy
+      - name: Verify Cloudflare authentication
+        run: npx wrangler@latest whoami
+      - name: Deploy Worker
+        run: npx wrangler@latest deploy
 
   deploy-pages:
     needs: test
