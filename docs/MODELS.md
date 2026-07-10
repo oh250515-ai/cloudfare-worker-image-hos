@@ -1,91 +1,123 @@
-# Cloudflare Workers AI model catalog
+# Cloudflare Workers AI model field guide
 
-A practical guide to models this Worker can call, grouped by job, with strengths, weaknesses, when to use, and a real request. Model IDs change; confirm the current catalog at https://developers.cloudflare.com/workers-ai/models/ . Set `ALLOWED_MODELS` to `*` (or a glob) to call any of these, and pick per request with the `model` field.
+Practical selection guide checked against Cloudflare's official model catalog and changelog on 10 July 2026. Model availability and input schemas change, so verify the exact model page before production rollout.
 
-All examples assume `BASE=https://YOUR-WORKER.workers.dev` and JSON content type.
+Set `allowedModels` to an exact list, glob, or `*`. The wildcard still accepts only valid Cloudflare-hosted IDs shaped like `@cf/author/model`.
 
-## Text generation and chat
+## Quick selection
 
-### @cf/meta/llama-3.1-8b-instruct  (default text model)
-- Strengths: fast, cheap, low latency, reliable general assistant and summarization.
-- Weaknesses: weaker at hard reasoning, long context and niche coding vs larger models.
-- Use for: default chat, summaries, classification, quick drafts, high-volume tasks.
+| Job | Start with | Why |
+| --- | --- | --- |
+| Cheap multilingual text | `@cf/zai-org/glm-4.7-flash` | 131k context, 100+ languages, reasoning and tools |
+| General reasoning | `@cf/openai/gpt-oss-20b` | 128k, agentic reasoning, low output price |
+| Hard coding | `@cf/zai-org/glm-5.2` | Flagship agentic coding, 262k |
+| Code + screenshots | `@cf/moonshotai/kimi-k2.7-code` | Vision, tools, structured output, 262k |
+| Dense screenshot OCR | `@cf/mistralai/mistral-small-3.1-24b-instruct` | Vision + text, better fit than small OCR VLMs |
+| Balanced multimodal | `@cf/google/gemma-4-26b-a4b-it` | Vision + reasoning, 256k, strong price |
+| Native image reasoning | `@cf/meta/llama-4-scout-17b-16e-instruct` | Multimodal native, 131k, tools |
+| Sparse/cheap OCR | `@cf/moondream/moondream3.1-9B-A2B` | Fast OCR, point and detect |
 
-```bash
-curl -s $BASE/v1/text -H 'content-type: application/json' \
-  -d '{"prompt":"Tóm tắt đoạn sau trong 1 câu: ...","parameters":{"max_tokens":120}}'
-```
+## Text and chat
 
-### @cf/meta/llama-3.3-70b-instruct-fp8-fast
-- Strengths: much stronger reasoning and instruction following, function calling, fp8 keeps it fast for its size.
-- Weaknesses: higher cost and latency than 8B; ~24k context.
-- Use for: harder reasoning, agent/tool calling, higher-quality drafting.
+### `@cf/zai-org/glm-4.7-flash`
 
-```bash
-curl -s $BASE/v1/chat -H 'content-type: application/json' \
-  -d '{"model":"@cf/meta/llama-3.3-70b-instruct-fp8-fast","messages":[{"role":"user","content":"Lập dàn ý cho bài viết về caching."}]}'
-```
-
-### @cf/zai-org/glm-4.7-flash
-- Strengths: fast, multilingual (100+ languages), long 131k context, tool calling; strong value.
-- Weaknesses: less battle-tested than Llama for English edge cases.
-- Use for: multilingual chat (including Vietnamese), long documents, cost-sensitive reasoning.
+**Strengths:** fast, multilingual including Vietnamese, 131,072-token context, reasoning and function calling.  
+**Weaknesses:** text-only; not the choice for screenshots.  
+**Use:** default chat, summarization, classification, extraction from long text.
 
 ```bash
-curl -s $BASE/v1/text -H 'content-type: application/json' \
-  -d '{"model":"@cf/zai-org/glm-4.7-flash","prompt":"Giải thích điện toán biên cho người mới."}'
+curl -s "$BASE/v1/text" -H 'content-type: application/json' \
+  -H 'x-api-key: YOUR_KEY' \
+  -d '{"model":"@cf/zai-org/glm-4.7-flash","prompt":"Tóm tắt văn bản sau thành 3 ý: ...","parameters":{"max_tokens":300,"temperature":0.2}}'
 ```
 
-## Code generation
+### `@cf/openai/gpt-oss-20b`
 
-### @cf/qwen/qwen2.5-coder-32b-instruct  (default code model)
-- Strengths: purpose-built for code, strong multi-language generation, refactoring and explanation.
-- Weaknesses: heavier; overkill for trivial snippets; verify the exact ID is live in your account.
-- Use for: writing functions, tests, refactors, bug explanations.
+**Strengths:** reasoning, agentic tasks, 128k context, function calling.  
+**Weaknesses:** model-specific Responses-style input instead of ordinary chat messages.  
+**Use:** analysis, decision support, tool workflows. Call through `/v1/run`.
 
 ```bash
-curl -s $BASE/v1/code -H 'content-type: application/json' \
-  -d '{"prompt":"Viết hàm TypeScript debounce(fn, ms) kèm kiểu.","parameters":{"max_tokens":400}}'
+curl -s "$BASE/v1/run" -H 'content-type: application/json' \
+  -d '{"model":"@cf/openai/gpt-oss-20b","input":{"instructions":"Trả lời ngắn gọn","input":"Giải thích CAP theorem"}}'
 ```
 
-### @cf/moonshotai/kimi-k2.7-code
-- Strengths: frontier-scale, very long 262k context, vision + tool calling + structured output for agentic coding.
-- Weaknesses: most expensive here; latency higher; use when the task truly needs it.
-- Use for: large-repo reasoning, agent workflows, code + screenshot together.
+### `@cf/meta/llama-3.3-70b-instruct-fp8-fast`
+
+**Strengths:** strong instruction following and tool calling.  
+**Weaknesses:** 24k context and more expensive than small chat models.  
+**Use:** higher-quality drafting and reasoning where long context is unnecessary.
+
+## Code
+
+### `@cf/zai-org/glm-5.2`
+
+**Strengths:** flagship agentic coding model, 262,144-token context, reasoning and functions.  
+**Weaknesses:** expensive and slower; wasteful for tiny snippets.  
+**Use:** repo-scale review, complex refactors, coding agents.
+
+```bash
+curl -s "$BASE/v1/code" -H 'content-type: application/json' \
+  -d '{"model":"@cf/zai-org/glm-5.2","prompt":"Review module này, tìm race condition và viết patch: ...","parameters":{"max_tokens":2000}}'
+```
+
+### `@cf/moonshotai/kimi-k2.7-code`
+
+**Strengths:** 262,144-token context, vision, structured output and multi-turn tool calling.  
+**Weaknesses:** high price and latency.  
+**Use:** large repositories, agentic workflows, code plus UI screenshot analysis.
 
 ## Vision and OCR
 
-### @cf/mistralai/mistral-small-3.1-24b-instruct  (recommended for dense OCR)
-- Strengths: strong vision + text, 128k context, good at dense documents and structured extraction; use adapter `chat-vision`.
-- Weaknesses: larger/slower than tiny OCR models.
-- Use for: dense Vietnamese screenshots, invoices, forms, reliable OCR + reasoning.
+### `@cf/mistralai/mistral-small-3.1-24b-instruct`
+
+**Strengths:** vision + text, 128k context, structured extraction.  
+**Weaknesses:** slower than small VLMs; image input should use the `chat-vision` adapter.  
+**Use:** dense Vietnamese WinForms screenshots, forms, documents and image reasoning.
 
 ```bash
-curl -s $BASE/v1/extract -H 'content-type: application/json' \
-  -d '{"model":"@cf/mistralai/mistral-small-3.1-24b-instruct","imageUrl":"https://.../screen.png","prompt":"OCR toàn bộ"}'
+curl -s "$BASE/v1/extract" -H 'content-type: application/json' \
+  -d '{"model":"@cf/mistralai/mistral-small-3.1-24b-instruct","adapter":"chat-vision","imageUrl":"https://example.com/screen.png","prompt":"OCR toàn bộ và trích trạng thái ứng dụng"}'
 ```
 
-### @cf/meta/llama-3.2-11b-vision-instruct
-- Strengths: solid general vision reasoning and captioning.
-- Weaknesses: needs one-time Meta license acceptance in your account before first use.
-- Use for: image Q&A, captioning, general visual reasoning.
+### `@cf/google/gemma-4-26b-a4b-it`
 
-### @cf/moondream/moondream3.1-9B-A2B
-- Strengths: small and fast, OCR/pointing/detect, cheap for high volume.
-- Weaknesses: hallucinates and loops on dense multi-diacritic Vietnamese screens; better for sparse text and simple scenes.
-- Use for: quick captions, sparse-text images, object pointing on a budget.
+**Strengths:** vision, reasoning, 256k context, low listed unit price.  
+**Weaknesses:** benchmark Vietnamese OCR on your own screenshots before choosing it.  
+**Use:** balanced multimodal assistant, image Q&A and document understanding.
 
-### @cf/llava-hf/llava-1.5-7b-hf
-- Strengths: lightweight open VQA/captioning.
-- Weaknesses: beta, weaker OCR and instruction following.
-- Use for: experiments and simple captioning.
+### `@cf/meta/llama-4-scout-17b-16e-instruct`
 
-## Choosing quickly
+**Strengths:** native multimodal model, 131k context, function calling.  
+**Weaknesses:** Meta terms apply; not an OCR-specialized engine.  
+**Use:** visual reasoning, UI understanding and image-assisted agents.
 
-- General/cheap chat: llama-3.1-8b-instruct.
-- Best reasoning without huge cost: llama-3.3-70b-instruct-fp8-fast or glm-4.7-flash.
-- Multilingual + long docs: glm-4.7-flash.
-- Code: qwen2.5-coder-32b-instruct; agentic/huge context: kimi-k2.7-code.
-- Dense OCR: mistral-small-3.1-24b-instruct; sparse/cheap OCR: moondream.
+### `@cf/moondream/moondream3.1-9B-A2B`
 
-Benchmark any shortlist in one call by adding `benchmark: { models: [...], runs: 3 }` to a `/v1/text`, `/v1/code`, `/v1/chat` or `/v1/run` request, or use the [playground](https://oh250515-ai.github.io/cloudfare-worker-image-hos/playground.html).
+**Strengths:** fast, efficient, OCR, pointing and detection.  
+**Weaknesses:** measured only 2/6 expected anchors on the dense Vietnamese DHG screenshot and produced repetition loops.  
+**Use:** sparse text, quick captions and pointing. Do not make it the default for dense Vietnamese desktop screens.
+
+### `@cf/meta/llama-3.2-11b-vision-instruct`
+
+**Strengths:** general recognition, captioning and visual Q&A.  
+**Weaknesses:** requires one-time Meta license acceptance.  
+**Use:** general image reasoning after license setup.
+
+## Benchmark mode
+
+Text, code, chat and raw-run endpoints accept up to five models and five runs:
+
+```bash
+curl -s "$BASE/v1/text" -H 'content-type: application/json' \
+  -d '{"prompt":"Giải thích edge caching trong 4 câu","benchmark":{"models":["@cf/zai-org/glm-4.7-flash","@cf/meta/llama-3.3-70b-instruct-fp8-fast"],"runs":3}}'
+```
+
+The response reports each run, errors, usage, preview, average, minimum and maximum latency. Benchmark quality separately; speed alone is a dumb model-selection metric.
+
+## Official sources
+
+- https://developers.cloudflare.com/workers-ai/models/
+- https://developers.cloudflare.com/workers-ai/changelog/
+- https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
+- https://developers.cloudflare.com/workers-ai/features/json-mode/

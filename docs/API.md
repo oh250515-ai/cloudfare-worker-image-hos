@@ -1,63 +1,101 @@
 # API guide
 
-Base URL is the `workers.dev` URL from the deploy job. Send `content-type: application/json`. If the Worker has `API_KEY` set, add `x-api-key: YOUR_KEY` (or `Authorization: Bearer YOUR_KEY`).
+Base URL is the `workers.dev` URL printed by deployment. Send `content-type: application/json`; add `x-api-key` or `Authorization: Bearer` when runtime `API_KEY` is enabled.
 
-## GET /v1/models
+## Endpoint map
 
-```json
-{ "default": "@cf/moondream/moondream3.1-9B-A2B", "textDefault": "@cf/meta/llama-3.1-8b-instruct", "codeDefault": "@cf/qwen/qwen2.5-coder-32b-instruct", "allowed": ["*"], "adapters": ["auto","moondream","image-prompt","chat-vision"] }
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Uptime probe |
+| GET | `/v1/models` | Defaults, model policy and vision adapters |
+| POST | `/v1/text` | Text generation from prompt or messages |
+| POST | `/v1/code` | Coding prompt with code-focused system instruction |
+| POST | `/v1/chat` | OpenAI-style message conversation |
+| POST | `/v1/run` | Raw `env.AI.run(model,input)` passthrough |
+| POST | `/v1/extract` | Image URL/base64 to `rawText`, data and annotations |
+
+## Text
+
+```bash
+curl -s "$BASE/v1/text" -H 'content-type: application/json' \
+  -H 'x-api-key: YOUR_KEY' \
+  -d '{"model":"@cf/zai-org/glm-4.7-flash","prompt":"Viết thông báo bảo trì 80 từ","parameters":{"max_tokens":200,"temperature":0.3}}'
 ```
 
-## POST /v1/text and /v1/code
+You may replace `prompt` with a full `messages` array. `parameters` is forwarded to the selected model.
 
-Provide `prompt` (a system prompt is added automatically) or a full `messages` array. `parameters` is forwarded to the model (`max_tokens`, `temperature`, `top_p`, ...).
+## Code
 
-```json
-{ "model": "@cf/meta/llama-3.1-8b-instruct", "prompt": "Viết một câu chào", "parameters": { "max_tokens": 64, "temperature": 0.7 } }
+```bash
+curl -s "$BASE/v1/code" -H 'content-type: application/json' \
+  -d '{"model":"@cf/zai-org/glm-5.2","prompt":"Viết TypeScript retry helper có exponential backoff và unit test","parameters":{"max_tokens":1200}}'
 ```
 
-Response:
+The endpoint adds a coding system instruction when given a plain prompt. For complete control, send `messages`.
 
-```json
-{ "ok": true, "requestId": "uuid", "kind": "text", "model": "@cf/meta/llama-3.1-8b-instruct", "text": "Xin chào!", "output": { }, "usage": { "total_tokens": 42 }, "timingMs": 380 }
+## Chat
+
+```bash
+curl -s "$BASE/v1/chat" -H 'content-type: application/json' \
+  -d '{"model":"@cf/zai-org/glm-4.7-flash","messages":[{"role":"system","content":"Trả lời ngắn."},{"role":"user","content":"Durable Objects giải quyết việc gì?"}],"parameters":{"max_tokens":250}}'
 ```
 
-`/v1/code` is identical but defaults to the code-tuned model and a coding system prompt.
+## Raw model run
 
-## POST /v1/chat
+Use `/v1/run` when a model has a bespoke schema. `input` is forwarded unchanged after model-policy validation.
 
-Requires a `messages` array (OpenAI-style roles).
-
-```json
-{ "messages": [ { "role": "system", "content": "You are concise." }, { "role": "user", "content": "What is a Durable Object?" } ], "parameters": { "max_tokens": 256 } }
+```bash
+curl -s "$BASE/v1/run" -H 'content-type: application/json' \
+  -d '{"model":"@cf/openai/gpt-oss-20b","input":{"instructions":"Trả lời bằng tiếng Việt","input":"Phân tích ưu nhược điểm event sourcing"}}'
 ```
 
-## POST /v1/run
+Embeddings example:
 
-Raw passthrough. Whatever is in `input` goes straight to `env.AI.run(model, input)`. Use this for models with bespoke input shapes.
-
-```json
-{ "model": "@cf/baai/bge-m3", "input": { "text": ["cloudflare workers", "serverless"] } }
+```bash
+curl -s "$BASE/v1/run" -H 'content-type: application/json' \
+  -d '{"model":"@cf/baai/bge-m3","input":{"text":["Cloudflare Workers","serverless edge"]}}'
 ```
 
-## Benchmark mode
-
-Add `benchmark` to any `/v1/{text,code,chat,run}` request to time and compare models in one call. Capped at 5 models and 5 runs to bound neuron usage.
+## Response
 
 ```json
-{ "prompt": "Summarize CAP theorem", "benchmark": { "models": ["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"], "runs": 3 } }
+{
+  "ok": true,
+  "requestId": "uuid",
+  "kind": "text",
+  "model": "@cf/zai-org/glm-4.7-flash",
+  "text": "...",
+  "output": {},
+  "usage": {},
+  "timingMs": 420,
+  "metadata": {}
+}
 ```
 
-Response contains per-run timing/usage and a per-model summary:
+`output` always preserves the original provider response. `text` is a convenience extraction and may be null for embeddings or non-text models.
+
+## Benchmark
+
+Add `benchmark` to `/v1/text`, `/v1/code`, `/v1/chat` or `/v1/run`. Limits: five models and five runs.
 
 ```json
-{ "ok": true, "mode": "benchmark", "benchmark": { "models": ["..."], "runs": 3, "results": [ { "model": "...", "runs": [ { "run": 1, "ok": true, "timingMs": 410, "usage": {}, "textPreview": "..." } ], "summary": { "attempts": 3, "ok": 3, "avgMs": 402, "minMs": 388, "maxMs": 421 } } ] } }
+{
+  "prompt": "Tóm tắt CAP theorem",
+  "benchmark": {
+    "models": ["@cf/zai-org/glm-4.7-flash", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
+    "runs": 3
+  }
+}
 ```
 
-## POST /v1/extract
+## Image extraction
 
-Image-to-JSON. Provide `imageUrl`, `imageBase64`, or both (base64 preferred, URL fallback). See the model catalog for vision/OCR guidance. Response keeps `result.rawText`, `result.data` (your schema), `result.annotations`, `warnings`, and per-pass `modelMeta`.
+Supply `imageUrl`, `imageBase64`, or both. Base64 takes priority; an invalid base64 value falls back to URL. Choose a vision-capable model and matching adapter. See [MODELS.md](MODELS.md).
+
+## Model policy
+
+`ALLOWED_MODELS` accepts exact IDs, comma lists, glob rules such as `@cf/mistralai/*`, or `*`. Wildcard still requires the safe Cloudflare ID shape `@cf/author/model`; external provider strings remain rejected.
 
 ## Errors
 
-`INVALID_JSON`, `INVALID_INPUT`, `REQUEST_TOO_LARGE`, `UNAUTHORIZED`, `MODEL_NOT_ALLOWED`, `RUN_FAILED`, `EXTRACTION_FAILED`. Model policy is controlled by `ALLOWED_MODELS`: exact IDs, comma lists, glob (`@cf/mistralai/*`), or `*` for any valid `@cf/author/model`.
+`INVALID_JSON`, `INVALID_INPUT`, `REQUEST_TOO_LARGE`, `UNAUTHORIZED`, `MODEL_NOT_ALLOWED`, `RUN_FAILED`, `EXTRACTION_FAILED`.
