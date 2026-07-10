@@ -1,9 +1,13 @@
 export type JsonSchema = Record<string, unknown>;
+export type ModelAdapter = "auto" | "moondream" | "image-prompt" | "chat-vision";
 
 export interface ExtractRequest {
-  imageUrl: string;
+  imageUrl?: string;
+  imageBase64?: string;
+  imageMimeType?: string;
   prompt?: string;
   model?: string;
+  adapter?: ModelAdapter;
   parameters?: Record<string, unknown>;
   output?: {
     includeRawText?: boolean;
