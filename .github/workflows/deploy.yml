@@ -14,39 +14,49 @@ concurrency:
   group: production
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: 24.18.0
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
-      - run: npm install
-      - run: npm run check
+          node-version: ${{ env.NODE_VERSION }}
+          check-latest: true
+      - name: Install pinned latest dependencies
+        run: npm install --no-fund --audit=false
+      - name: Check dependency vulnerabilities
+        run: npm audit --audit-level=high
+      - name: Typecheck, script validation and unit tests
+        run: npm run check
 
   deploy-worker:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
-      - run: npm install
+          node-version: ${{ env.NODE_VERSION }}
+          check-latest: true
+      - name: Install pinned latest dependencies
+        run: npm install --no-fund --audit=false
       - name: Parse credentials and runtime config from the single JSON secret
         env:
           CONFIG_INPUT: ${{ secrets.CLOUDFLARE_CONFIG_JSON }}
         run: node scripts/prepare-ci-config.mjs
       - name: Verify Cloudflare authentication
-        run: npx wrangler@latest whoami
+        run: npx --no-install wrangler whoami
       - name: Ensure account workers.dev subdomain exists when configured
         run: node scripts/cloudflare-subdomain.mjs account
       - name: Deploy Worker and capture URL
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler@latest deploy --config wrangler.ci.jsonc 2>&1 | tee deploy.log
+          npx --no-install wrangler deploy --config wrangler.ci.jsonc 2>&1 | tee deploy.log
           WORKER_URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | tail -n 1 || true)"
           if [ -z "$WORKER_URL" ]; then
             echo "Could not find a workers.dev URL in Wrangler output" >&2
@@ -59,7 +69,7 @@ jobs:
       - name: Apply Worker API key when configured
         if: env.HAS_WORKER_API_KEY == 'true'
         shell: bash
-        run: printf '%s' "$WORKER_API_KEY" | npx wrangler@latest secret put API_KEY --config wrangler.ci.jsonc
+        run: printf '%s' "$WORKER_API_KEY" | npx --no-install wrangler secret put API_KEY --config wrangler.ci.jsonc
       - name: Smoke test deployed API
         run: node scripts/smoke-test.mjs
 
@@ -70,10 +80,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

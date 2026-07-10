@@ -1,20 +1,26 @@
 {
   "name": "cloudfare-worker-image-hos",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.18.0",
+    "npm": ">=11"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "types": "wrangler types",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:scripts": "node --check scripts/prepare-ci-config.mjs && node --check scripts/cloudflare-subdomain.mjs && node --check scripts/smoke-test.mjs",
-    "check": "npm run typecheck && npm run check:scripts && npm test"
+    "check": "npm run typecheck && npm run check:scripts && npm test",
+    "audit": "npm audit --audit-level=high"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "latest",
-    "typescript": "latest",
-    "vitest": "latest",
-    "wrangler": "latest"
+    "@cloudflare/workers-types": "5.20260707.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.110.0"
   }
 }
