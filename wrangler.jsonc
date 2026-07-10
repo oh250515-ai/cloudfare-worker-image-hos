@@ -15,7 +15,13 @@
     }
   },
   "vars": {
+    "ALLOWED_MODELS": "*",
+    "DEFAULT_MODEL": "@cf/moondream/moondream3.1-9B-A2B",
+    "DEFAULT_TEXT_MODEL": "@cf/zai-org/glm-4.7-flash",
+    "DEFAULT_CODE_MODEL": "@cf/zai-org/glm-5.2",
     "MAX_IMAGE_BYTES": "8388608",
-    "FETCH_TIMEOUT_MS": "12000"
+    "FETCH_TIMEOUT_MS": "12000",
+    "TEST_IMAGE_URL": "https://pgurpzubjhgilszrscdl.storage.supabase.co/storage/v1/object/public/o25.ip8plus.0424/public-bucket-proxy/DESKTOP-281KMLH-Arc-2026-07-08-11h35p30.005.png",
+    "WORKERS_SUBDOMAIN": "oh25-0515"
   }
 }
