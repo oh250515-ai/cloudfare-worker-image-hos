@@ -57,6 +57,8 @@ config.vars ||= {};
 const runtime = {
   ALLOWED_MODELS: clean(cfg.allowedModels),
   DEFAULT_MODEL: clean(cfg.defaultModel),
+  DEFAULT_TEXT_MODEL: clean(cfg.textModel || cfg.defaultTextModel),
+  DEFAULT_CODE_MODEL: clean(cfg.codeModel || cfg.defaultCodeModel),
   MAX_IMAGE_BYTES: clean(cfg.maxImageBytes),
   FETCH_TIMEOUT_MS: clean(cfg.fetchTimeoutMs)
 };
