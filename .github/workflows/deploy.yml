@@ -27,7 +27,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           check-latest: true
       - name: Install pinned latest dependencies
-        run: npm install --no-fund --audit=false
+        run: npm install --legacy-peer-deps --no-fund --audit=false
       - name: Check dependency vulnerabilities
         run: npm audit --audit-level=high
       - name: Typecheck, script validation and unit tests
@@ -43,7 +43,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           check-latest: true
       - name: Install pinned latest dependencies
-        run: npm install --no-fund --audit=false
+        run: npm install --legacy-peer-deps --no-fund --audit=false
       - name: Parse credentials and runtime config from the single JSON secret
         env:
           CONFIG_INPUT: ${{ secrets.CLOUDFLARE_CONFIG_JSON }}
