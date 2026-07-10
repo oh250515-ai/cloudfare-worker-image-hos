@@ -1,14 +1,14 @@
 # Cloudflare implementation notes
 
-Checked against Cloudflare's current documentation on 10 July 2026.
+Checked against Cloudflare documentation and current Workers SDK behavior on 10 July 2026.
 
 ## Platform choices
 
-- Workers AI binding exposes inference as `env.AI.run()` and avoids storing an account token inside Worker code.
+- Workers AI binding exposes inference as `env.AI.run()` and avoids embedding Cloudflare credentials in Worker code.
 - Default model: `@cf/moondream/moondream3.1-9B-A2B`, documented for OCR, pointing, visual reasoning and structured output.
-- Alternative: `@cf/mistralai/mistral-small-3.1-24b-instruct` for harder vision/reasoning tasks. Model-specific request fields still apply.
+- Alternative: `@cf/mistralai/mistral-small-3.1-24b-instruct` for harder vision/reasoning tasks.
 - Meta Llama 3.2 Vision requires a one-time license acceptance, so it is not the zero-touch default.
-- JSON Mode exists for compatible text-generation models. This implementation also prompt-enforces and normalizes JSON because image-to-text model interfaces differ.
+- JSON Mode exists for compatible text-generation models. This implementation also prompt-enforces and normalizes JSON because vision model interfaces differ.
 
 ## Free tier
 
@@ -16,28 +16,31 @@ Workers Free currently documents 100,000 requests/day, 128 MB memory and 10 ms C
 
 ## CI authentication
 
-Current Cloudflare documentation for non-interactive Wrangler CI requires these two values:
-
-1. Cloudflare Account ID.
-2. Scoped Cloudflare API Token.
-
-The repo stores both inside one GitHub Secret named `CLOUDFLARE_CONFIG_JSON`:
+The single `CLOUDFLARE_CONFIG_JSON` secret supports:
 
 ```json
-{"accountId":"YOUR_ACCOUNT_ID","apiToken":"YOUR_SCOPED_API_TOKEN"}
+{"accountId":"...","apiToken":"..."}
 ```
 
-The JSON must use ASCII double quotes, contain no comments and have no trailing comma. The workflow also accepts base64-encoded JSON and validates each field without printing secrets.
+or:
 
-A Global API Key is not interchangeable with an API Token in current Wrangler CI. Global-key API authentication also needs `X-Auth-Email`; therefore Account ID plus Global API Key alone is insufficient. Automatically minting a new long-lived API token during every deployment is intentionally not implemented: it needs broader credential access, proliferates tokens and defeats least privilege. Create one scoped token in Cloudflare Dashboard and rotate it deliberately.
+```json
+{"accountId":"...","email":"...","globalApiKey":"..."}
+```
+
+Current Workers SDK declares `CLOUDFLARE_API_KEY` plus `CLOUDFLARE_EMAIL` as legacy authentication variables and prefers `CLOUDFLARE_API_TOKEN`. The workflow uses Wrangler CLI directly, not `cloudflare/wrangler-action`, because that action no longer supports Global API Key authentication.
+
+Global mode authenticates Wrangler directly. It deliberately does not mint a token during each build. Cloudflare's current token-via-API guide requires an initial token created with the **Create additional tokens** template; Global API Key is not the documented bootstrap credential for that flow. Creating disposable tokens at every push would also add lifecycle and privilege risk without improving this deployment.
+
+Use Global mode to unblock deployment, then rotate to a scoped API Token when practical. Detailed setup: `docs/DEPLOY.md`.
 
 ## GitHub Pages versus Worker
 
-GitHub Pages serves the static documentation at https://oh250515-ai.github.io/cloudfare-worker-image-hos/. It does not execute Cloudflare code and is not the image extraction endpoint. The API runs at the `workers.dev` URL emitted by `wrangler deploy`.
+GitHub Pages serves static documentation at https://oh250515-ai.github.io/cloudfare-worker-image-hos/. It does not execute Cloudflare code. The API runs at the `workers.dev` URL emitted by `wrangler deploy`.
 
 ## Runtime configuration
 
-`wrangler.jsonc` defines the AI binding, compatibility date and observability. Set runtime secrets with `wrangler secret put API_KEY`. Optional plain variables are `DEFAULT_MODEL`, `ALLOWED_MODELS`, `MAX_IMAGE_BYTES`, and `FETCH_TIMEOUT_MS`.
+`wrangler.jsonc` defines the AI binding, compatibility date and observability. Set runtime secrets with `wrangler secret put API_KEY`. Optional variables are `DEFAULT_MODEL`, `ALLOWED_MODELS`, `MAX_IMAGE_BYTES`, and `FETCH_TIMEOUT_MS`.
 
 ## Official references
 
@@ -45,6 +48,8 @@ GitHub Pages serves the static documentation at https://oh250515-ai.github.io/cl
 - https://developers.cloudflare.com/workers-ai/features/json-mode/
 - https://developers.cloudflare.com/workers-ai/models/moondream3.1-9B-A2B/
 - https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/
+- https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/
 - https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+- https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/
 - https://developers.cloudflare.com/workers/platform/limits/
 - https://developers.cloudflare.com/workers-ai/platform/pricing/
