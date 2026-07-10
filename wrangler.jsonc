@@ -5,7 +5,15 @@
   "compatibility_date": "2026-07-10",
   "workers_dev": true,
   "ai": { "binding": "AI" },
-  "observability": { "enabled": true },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false
+    }
+  },
   "vars": {
     "MAX_IMAGE_BYTES": "8388608",
     "FETCH_TIMEOUT_MS": "12000"
