@@ -32,8 +32,12 @@ jobs:
         run: npm audit --audit-level=high
       - name: Typecheck
         run: npm run typecheck
-      - name: Validate Node scripts
-        run: npm run check:scripts
+      - name: Validate CI config parser
+        run: node --check scripts/prepare-ci-config.mjs
+      - name: Validate Cloudflare subdomain helper
+        run: node --check scripts/cloudflare-subdomain.mjs
+      - name: Validate smoke test
+        run: node --check scripts/smoke-test.mjs
       - name: Unit tests
         run: npm test
 
